@@ -12,7 +12,7 @@ from django.conf import settings
 from .models import Usuario, Rol, Permiso, UsuarioRol, RolPermiso
 from .serializers import (UsuarioSerializer, UsuarioRegistroSerializer, 
                         LoginSerializer, CambioPasswordSerializer,
-                        RecuperarPasswordSerializer, RolSerializer, 
+                        RecuperarPasswordSerializer, PerfilUsuarioUpdateSerializer, RolSerializer, 
                         PermisoSerializer, UsuarioRolSerializer, 
                         RolPermisoSerializer)
 
@@ -48,7 +48,15 @@ def login_usuario(request):
 @permission_classes([IsAuthenticated])
 def logout_usuario(request):
     try:
-        refresh_token = request.data["refresh_token"]
+        # ✅ ACEPTAR ambos formatos
+        refresh_token = request.data.get("refresh_token") or request.data.get("refresh")
+        
+        if not refresh_token:
+            return Response(
+                {"error": "Token de refresh requerido"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
         token = RefreshToken(refresh_token)
         token.blacklist()
         return Response(status=status.HTTP_205_RESET_CONTENT)
@@ -93,10 +101,20 @@ def recuperar_password(request):
             uid = urlsafe_base64_encode(force_bytes(usuario.pk))
             
             # Enviar email (simulación)
-            reset_url = f"{settings.FRONTEND_URL}/reset-password/{uid}/{token}/"
+            reset_url = f"{settings.FRONTEND_URL}reset-password/{uid}/{token}/"
             
             # En producción, enviar email real
-            print(f"URL para resetear password: {reset_url}")
+            send_mail(
+                'Recuperación de Contraseña - SmartSales365',
+                f'Hola {usuario.nombre},\n\n'
+                f'Haz clic en el siguiente enlace para restablecer tu contraseña:\n'
+                f'{reset_url}\n\n'
+                'Si no solicitaste esto, por favor ignora este correo.\n\n'
+                'El equipo de SmartSales365',
+                settings.EMAIL_HOST_USER,
+                [email],
+                fail_silently=False,
+            )
             
             return Response({
                 'mensaje': 'Se ha enviado un enlace de recuperación a su email'
@@ -209,6 +227,16 @@ def activar_usuario(request, usuario_id):
     except Usuario.DoesNotExist:
         return Response({'error': 'Usuario no encontrado'}, status=status.HTTP_404_NOT_FOUND)
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def obtener_mis_roles(request):
+    """Obtiene los roles del usuario autenticado."""
+    usuario = request.user
+    roles = usuario.obtener_roles()
+    serializer = RolSerializer(roles, many=True)
+    return Response(serializer.data)
+
+
 class UsuarioListView(generics.ListAPIView):
     queryset = Usuario.objects.all()
     serializer_class = UsuarioSerializer
@@ -216,13 +244,19 @@ class UsuarioListView(generics.ListAPIView):
 
 class UsuarioDetailView(generics.RetrieveUpdateAPIView):
     queryset = Usuario.objects.all()
-    serializer_class = UsuarioSerializer
     permission_classes = [IsAuthenticated]
     
     def get_object(self):
+        # Si el pk es 'me', devolvemos el usuario autenticado.
         if self.kwargs.get('pk') == 'me':
             return self.request.user
         return super().get_object()
+    
+    def get_serializer_class(self):
+        # Usar un serializer para leer y otro para escribir
+        if self.request.method in ['PUT', 'PATCH']:
+            return PerfilUsuarioUpdateSerializer
+        return UsuarioSerializer
 
 class RolListCreateView(generics.ListCreateAPIView):
     queryset = Rol.objects.all()

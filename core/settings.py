@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     # Third party apps
     'rest_framework',
     'rest_framework_simplejwt',
+    'rest_framework_simplejwt.token_blacklist',  # <-- AÑADE ESTA LÍNEA
     'corsheaders',
     'drf_yasg',
     'django_filters',
@@ -206,6 +207,8 @@ AUTH_USER_MODEL = 'users.Usuario'
 # Configuración de email (para recuperación de contraseña)
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'  # Para desarrollo
 # EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'  # Para producción
+# EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'  # Para desarrollo
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'  # Para producción
 EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True

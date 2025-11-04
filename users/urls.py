@@ -16,7 +16,8 @@ urlpatterns = [
     # Gestión de usuarios
     path('usuarios/', views.UsuarioListView.as_view(), name='lista_usuarios'),
     path('usuarios/<pk>/', views.UsuarioDetailView.as_view(), name='detalle_usuario'),
-    path('usuarios/me/', views.UsuarioDetailView.as_view(), name='mi_perfil'),
+    path('usuarios/me/', views.UsuarioDetailView.as_view(), name='mi_perfil'), # Debe ir antes que <pk> si pk no es int
+    path('usuarios/me/roles/', views.obtener_mis_roles, name='mis_roles'),
     
     # Roles y permisos
     path('roles/', views.RolListCreateView.as_view(), name='lista_roles'),

@@ -4,21 +4,39 @@ from django.contrib.auth import authenticate
 from .models import Usuario, Rol, Permiso, UsuarioRol, RolPermiso
 
 class UsuarioSerializer(serializers.ModelSerializer):
+    roles = serializers.SerializerMethodField()
+
     class Meta:
         model = Usuario
+        # fields = ('id', 'email', 'nombre', 'apellido', 
+        #         'telefono', 'direccion', 'estado', 'fecha_registro', 
+        #         'ultimo_login', 'is_active', 'is_staff')
         fields = ('id', 'email', 'nombre', 'apellido', 
                 'telefono', 'direccion', 'estado', 'fecha_registro', 
-                'ultimo_login', 'is_active', 'is_staff')
+                'ultimo_login', 'is_active', 'is_staff', 'roles')
         read_only_fields = ('fecha_registro', 'ultimo_login', 'is_active', 'is_staff')
+
+    def get_roles(self, obj):
+        """
+        Obtiene los roles del usuario y los serializa.
+        """
+        roles = obj.obtener_roles()
+        return RolSerializer(roles, many=True).data
+
+class PerfilUsuarioUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Usuario
+        fields = ('nombre', 'apellido', 'telefono', 'direccion')
 
 class UsuarioRegistroSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
     confirm_password = serializers.CharField(write_only=True, min_length=6)
+    rol = serializers.CharField(write_only=True, required=False)
 
     class Meta:
         model = Usuario
         fields = ('email', 'password','confirm_password', 'nombre', 'apellido',
-                'telefono', 'direccion')
+                'telefono', 'direccion', 'rol')
         extra_kwargs = {
             'email': {'required': True},
             'nombre': {'required': True},
@@ -31,11 +49,23 @@ class UsuarioRegistroSerializer(serializers.ModelSerializer):
         return data
     
     def create(self, validated_data):
+        rol_nombre = validated_data.pop('rol', None)
         validated_data.pop('confirm_password')
         password = validated_data.pop('password')
+        
         usuario = Usuario(**validated_data)
         usuario.set_password(password)
         usuario.save()
+
+        if rol_nombre:
+            try:
+                rol = Rol.objects.get(nombre_rol=rol_nombre)
+                usuario.asignar_rol(rol)
+            except Rol.DoesNotExist:
+                # Opcional: manejar el caso en que el rol no existe.
+                # Por ahora, simplemente no se asigna y no se genera error.
+                pass
+        
         return usuario
 
 class LoginSerializer(serializers.Serializer):
