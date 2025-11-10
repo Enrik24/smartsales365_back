@@ -1,17 +1,19 @@
 # products/models.py
 from django.db import models
 from users.models import Usuario
+from cloudinary.models import CloudinaryField
 
 class Categoria(models.Model):
     nombre_categoria = models.CharField(max_length=100)
     categoria_padre = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True)
+    description = models.TextField(null=True, blank=True)
     
     class Meta:
         db_table = 'categorias'
 
 class Marca(models.Model):
     nombre_marca = models.CharField(max_length=100, unique=True)
-    
+    description = models.TextField(null=True, blank=True)
     class Meta:
         db_table = 'marcas'
 
@@ -54,7 +56,6 @@ class Inventario(models.Model):
     producto = models.OneToOneField(Producto, on_delete=models.CASCADE)
     stock_actual = models.IntegerField(default=0)
     stock_minimo = models.IntegerField(default=0, null=True, blank=True)
-    ubicacion_almacen = models.CharField(max_length=100, null=True, blank=True)
     ultima_actualizacion = models.DateTimeField(auto_now=True)
     
     def ajustar_stock(self, nueva_cantidad):
@@ -98,8 +99,7 @@ class Inventario(models.Model):
                 'producto_nombre': inventario.producto.nombre,
                 'stock_actual': inventario.stock_actual,
                 'stock_minimo': inventario.stock_minimo,
-                'diferencia': inventario.stock_minimo - inventario.stock_actual,
-                'ubicacion': inventario.ubicacion_almacen
+                'diferencia': inventario.stock_minimo - inventario.stock_actual
             })
             
         return alertas

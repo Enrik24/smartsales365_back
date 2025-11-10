@@ -24,9 +24,28 @@ class UsuarioSerializer(serializers.ModelSerializer):
         return RolSerializer(roles, many=True).data
 
 class PerfilUsuarioUpdateSerializer(serializers.ModelSerializer):
+    roles = serializers.PrimaryKeyRelatedField(
+        many=True, 
+        queryset=Rol.objects.all(), 
+        required=False
+    )
+
     class Meta:
         model = Usuario
-        fields = ('nombre', 'apellido', 'telefono', 'direccion')
+        fields = ('nombre', 'apellido', 'telefono', 'direccion', 'roles')
+
+    def update(self, instance, validated_data):
+        # Actualizar roles si se proporcionan
+        if 'roles' in validated_data:
+            roles_data = validated_data.pop('roles')
+            # Eliminar roles actuales
+            instance.usuariorol_set.all().delete()
+            # Asignar nuevos roles
+            for rol in roles_data:
+                UsuarioRol.objects.create(usuario=instance, rol=rol)
+        
+        # Actualizar los otros campos del perfil
+        return super().update(instance, validated_data)
 
 class UsuarioRegistroSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
@@ -114,9 +133,29 @@ class RecuperarPasswordSerializer(serializers.Serializer):
 
 
 class RolSerializer(serializers.ModelSerializer):
+    permisos = serializers.PrimaryKeyRelatedField(
+        many=True, 
+        queryset=Permiso.objects.all(), 
+        required=False
+    )
+
     class Meta:
         model = Rol
-        fields = '__all__'
+        fields = ['id', 'nombre_rol', 'descripcion', 'permisos']
+
+    def create(self, validated_data):
+        permisos_data = validated_data.pop('permisos', None)
+        rol = Rol.objects.create(**validated_data)
+        if permisos_data:
+            rol.permisos.set(permisos_data)
+        return rol
+
+    def update(self, instance, validated_data):
+        permisos_data = validated_data.pop('permisos', None)
+        instance = super().update(instance, validated_data)
+        if permisos_data is not None:
+            instance.permisos.set(permisos_data)
+        return instance
 
 class PermisoSerializer(serializers.ModelSerializer):
     class Meta:

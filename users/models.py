@@ -23,6 +23,10 @@ class UsuarioManager(BaseUserManager):
         except Usuario.DoesNotExist:
             return None
 
+    def obtener_por_rol(self, nombre_rol):
+        """Devuelve todos los usuarios que tienen un rol específico."""
+        return self.filter(usuariorol__rol__nombre_rol=nombre_rol)
+
     def create_superuser(self, email, password=None, **extra_fields):
         """Crea y guarda un superusuario con el email y contraseña dados"""
         extra_fields.setdefault('is_staff', True)
@@ -138,6 +142,7 @@ class Usuario(AbstractUser):
 class Rol(models.Model):
     nombre_rol = models.CharField(max_length=100, unique=True)
     descripcion = models.TextField(null=True, blank=True)
+    permisos = models.ManyToManyField('Permiso', through='RolPermiso', related_name='roles')
     
     def __str__(self):
         return self.nombre_rol

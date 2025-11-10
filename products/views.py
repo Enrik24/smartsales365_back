@@ -20,6 +20,15 @@ class CategoriaListCreateView(generics.ListCreateAPIView):
             return [IsAdminUser()]
         return [IsAuthenticated()]
 
+class CategoriaDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = Categoria.objects.all()
+    serializer_class = CategoriaSerializer
+    
+    def get_permissions(self):
+        if self.request.method in ['PUT', 'PATCH', 'DELETE']:
+            return [IsAdminUser()]
+        return [IsAuthenticated()]
+
 class MarcaListCreateView(generics.ListCreateAPIView):
     queryset = Marca.objects.all()
     serializer_class = MarcaSerializer
@@ -27,6 +36,15 @@ class MarcaListCreateView(generics.ListCreateAPIView):
     
     def get_permissions(self):
         if self.request.method == 'POST':
+            return [IsAdminUser()]
+        return [IsAuthenticated()]
+
+class MarcaDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = Marca.objects.all()
+    serializer_class = MarcaSerializer
+    
+    def get_permissions(self):
+        if self.request.method in ['PUT', 'PATCH', 'DELETE']:
             return [IsAdminUser()]
         return [IsAuthenticated()]
 
@@ -38,7 +56,7 @@ class ProductoListCreateView(generics.ListCreateAPIView):
     ordering_fields = ['precio', 'fecha_creacion', 'nombre']
     
     def get_serializer_class(self):
-        if self.request.method == 'POST':
+        if self.request.method in ['POST', 'PUT', 'PATCH']:
             return ProductoCreateSerializer
         return ProductoSerializer
     
@@ -58,6 +76,11 @@ class ProductoListCreateView(generics.ListCreateAPIView):
 class ProductoDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Producto.objects.select_related('categoria', 'marca', 'inventario')
     serializer_class = ProductoSerializer
+    
+    def get_serializer_class(self):
+        if self.request.method in ['PUT', 'PATCH']:
+            return ProductoCreateSerializer  # Usar el mismo serializer para actualizar
+        return ProductoSerializer
     
     def get_permissions(self):
         if self.request.method in ['PUT', 'PATCH', 'DELETE']:

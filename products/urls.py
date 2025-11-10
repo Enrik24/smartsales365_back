@@ -4,7 +4,9 @@ from . import views
 
 urlpatterns = [
     path('categorias/', views.CategoriaListCreateView.as_view(), name='lista_categorias'),
+    path('categorias/<int:pk>/', views.CategoriaDetailView.as_view(), name='detalle_categoria'),
     path('marcas/', views.MarcaListCreateView.as_view(), name='lista_marcas'),
+    path('marcas/<int:pk>/', views.MarcaDetailView.as_view(), name='detalle_marca'),
     path('productos/', views.ProductoListCreateView.as_view(), name='lista_productos'),
     path('productos/<int:pk>/', views.ProductoDetailView.as_view(), name='detalle_producto'),
     path('inventario/', views.InventarioListView.as_view(), name='lista_inventario'),
