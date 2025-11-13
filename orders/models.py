@@ -52,7 +52,7 @@ class Pedido(models.Model):
     estado_pedido = models.CharField(max_length=50, choices=ESTADOS_PEDIDO, default='pendiente')
     direccion_envio = models.TextField()
     direccion_facturacion = models.TextField(null=True, blank=True)
-    numero_seguimiento = models.CharField(max_length=100, null=True, blank=True)
+    numero_seguimiento = models.CharField(max_length=100, unique=True, null=True, blank=True)
     
     def confirmar(self):
         """Confirmar pedido"""
@@ -163,16 +163,15 @@ class Pago(models.Model):
     )
     
     METODOS_PAGO = (
-        ('tarjeta_credito', 'Tarjeta de Crédito'),
-        ('tarjeta_debito', 'Tarjeta de Débito'),
-        ('paypal', 'PayPal'),
-        ('yape', 'Yape'),
+        ('card', 'Tarjeta'),
+        ('qr', 'QR'),
     )
     
     pedido = models.OneToOneField(Pedido, on_delete=models.CASCADE)
-    stripe_payment_intent_id = models.CharField(max_length=255)
+    stripe_payment_intent_id = models.CharField(max_length=255, unique=True, null=True, blank=True)
+    stripe_checkout_session_id = models.CharField(max_length=255, null=True, blank=True)
     monto = models.DecimalField(max_digits=12, decimal_places=2)
-    moneda = models.CharField(max_length=3, default='PEN')
+    moneda = models.CharField(max_length=3, default='BOB')
     estado_pago = models.CharField(max_length=50, choices=ESTADOS_PAGO, default='pendiente')
     fecha_pago = models.DateTimeField(null=True, blank=True)
     metodo_pago = models.CharField(max_length=50, choices=METODOS_PAGO, null=True, blank=True)

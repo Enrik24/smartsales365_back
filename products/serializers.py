@@ -23,9 +23,13 @@ class ProductoSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Producto
-        fields = ('id', 'sku', 'nombre', 'descripcion', 'precio', 'categoria', 
-                'marca', 'categoria_nombre', 'marca_nombre', 'imagen_url', 
-                'ficha_tecnica_url', 'estado', 'fecha_creacion', 'stock_actual','stock_minimo')
+        fields = ('id', 'sku', 'nombre', 'slug', 'descripcion', 'precio', 
+                  'precio_original', 'categoria', 'marca', 'categoria_nombre', 
+                  'marca_nombre', 'imagen_url', 'ficha_tecnica_url', 'estado', 
+                  'fecha_creacion', 'stock_actual', 'stock_minimo', 'modelo', 
+                  'voltaje', 'garantia_meses', 'eficiencia_energetica', 'color', 
+                  'peso', 'alto', 'ancho', 'profundidad', 'costo', 
+                  'envio_gratis', 'destacado')
 
 class ProductoCreateSerializer(serializers.ModelSerializer):
     stock_inicial = serializers.IntegerField(write_only=True, required=False, default=0)
@@ -36,10 +40,13 @@ class ProductoCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Producto
         fields = (
-            'sku', 'nombre', 'descripcion', 'precio',
+            'sku', 'nombre', 'descripcion', 'precio', 'precio_original',
             'categoria', 'marca', 'estado',
             'stock_inicial', 'stock_minimo',
-            'imagen_file', 'ficha_tecnica_file'
+            'imagen_file', 'ficha_tecnica_file',
+            'modelo', 'voltaje', 'garantia_meses', 'eficiencia_energetica', 'color',
+            'peso', 'alto', 'ancho', 'profundidad',
+            'costo', 'envio_gratis', 'destacado'
         )
     
     """ def create(self, validated_data):

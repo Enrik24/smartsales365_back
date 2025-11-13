@@ -18,6 +18,10 @@ urlpatterns = [
     # Devoluciones
     path('devoluciones/', views.DevolucionListCreateView.as_view(), name='lista_devoluciones'),
 
+    # Pagos
+    path('pagos/', views.PagoListView.as_view(), name='lista_pagos'),
+    path('pagos/<int:pk>/', views.PagoDetailView.as_view(), name='detalle_pago'),
+
     path('pedidos/<int:pedido_id>/confirmar/', views.confirmar_pedido, name='confirmar_pedido'),
     path('pedidos/<int:pedido_id>/cancelar/', views.cancelar_pedido, name='cancelar_pedido'),
     path('detalle-pedido/<int:detalle_id>/quitar/', views.quitar_producto_pedido, name='quitar_producto_pedido'),
@@ -32,4 +36,7 @@ urlpatterns = [
     path('carrito/vaciar/', views.vaciar_carrito, name='vaciar_carrito'),
     path('carrito/quitar/<int:producto_id>/', views.quitar_producto_carrito, name='quitar_producto_carrito'),
     path('pedidos/<int:pedido_id>/seguimiento/', views.obtener_historial_seguimiento, name='historial_seguimiento'),
+    # Nuevas URLs para Stripe
+    path('pedidos/<int:pedido_id>/checkout-stripe/', views.crear_checkout_session_stripe, name='crear_checkout_stripe'),
+    path('webhooks/stripe/', views.StripeWebhookView.as_view(), name='stripe_webhook'),
 ]

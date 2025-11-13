@@ -2,6 +2,7 @@
 from django.db import models
 from users.models import Usuario
 from cloudinary.models import CloudinaryField
+from django.utils.text import slugify
 
 class Categoria(models.Model):
     nombre_categoria = models.CharField(max_length=100)
@@ -34,6 +35,25 @@ class Producto(models.Model):
     ficha_tecnica_url = models.URLField(max_length=512, null=True, blank=True)
     estado = models.CharField(max_length=50, choices=ESTADOS, default='activo')
     fecha_creacion = models.DateTimeField(auto_now_add=True)
+    slug = models.SlugField(max_length=255, unique=True)  # Nuevo
+    precio_original = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)  # Nuevo
+    # Específicos para electrodomésticos
+    modelo = models.CharField(max_length=100, null=True, blank=True)  # Nuevo
+    voltaje = models.CharField(max_length=50, null=True, blank=True)  # Nuevo
+    garantia_meses = models.IntegerField(null=True, blank=True)  # Nuevo
+    eficiencia_energetica = models.CharField(max_length=10, null=True, blank=True)  # Nuevo
+    color = models.CharField(max_length=100, null=True, blank=True)  # Nuevo
+    # Dimensiones y envío
+    peso = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)  # Nuevo
+    alto = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)  # Nuevo
+    ancho = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)  # Nuevo
+    profundidad = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)  # Nuevo
+    # Negocio
+    costo = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)  # Nuevo
+    envio_gratis = models.BooleanField(default=False)  # Nuevo
+    destacado = models.BooleanField(default=False)  # Nuevo
+    fecha_actualizacion = models.DateTimeField(auto_now=True)  # Nuevo
+    
 
     def activar(self):
         """Activar producto"""
@@ -49,6 +69,13 @@ class Producto(models.Model):
         """Marcar producto como agotado"""
         self.estado = 'agotado'
         self.save()
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            # Usar nombre + SKU que ya es único
+            self.slug = slugify(f"{self.nombre} {self.sku}")
+        super().save(*args, **kwargs)
+        
     class Meta:
         db_table = 'productos'
 
