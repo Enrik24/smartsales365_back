@@ -216,3 +216,8 @@ EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='')
 EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
 
 FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:5173/')
+# ==========================
+# 🤖 OpenAI API Key
+# ==========================
+
+OPENAI_API_KEY = config('OPENAI_API_KEY', default='')

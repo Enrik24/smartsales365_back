@@ -1,7 +1,9 @@
 # voice_commands/views.py
 import re
 import json
+import openai
 from datetime import datetime, timedelta
+from django.conf import settings
 from rest_framework import generics, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
@@ -39,10 +41,10 @@ def procesar_comando(request):
             # Determinar si es comando de voz o texto
             es_voz = 'transcript' in datos and datos['transcript']
             texto_entrada = datos.get('transcript') or datos.get('texto')
-            contexto = datos.get('contexto', 'reports')
+            contexto = datos.get('contexto', 'mobile_app')
             
-            # Procesar el comando
-            resultado = procesar_comando_natural(texto_entrada, contexto, request.user)
+            # Procesar el comando con OpenAI
+            resultado = procesar_comando_openai(texto_entrada, contexto, request.user)
             
             # Calcular duración del procesamiento
             duracion = (datetime.now() - inicio_procesamiento).total_seconds()
@@ -106,9 +108,166 @@ def procesar_comando(request):
     
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+def procesar_comando_openai(texto, contexto, usuario):
+    """
+    Procesa comandos en lenguaje natural usando OpenAI GPT
+    """
+    try:
+        # Configurar OpenAI
+        openai.api_key = settings.OPENAI_API_KEY
+        
+        # Crear prompt contextualizado
+        prompt = crear_prompt_openai(texto, contexto, usuario)
+        
+        # Llamar a OpenAI
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "Eres un asistente especializado en análisis de datos y reportes para una plataforma de ecommerce llamada SmartSales365. Tu función es interpretar comandos de voz y texto para generar reportes, buscar información y ejecutar acciones específicas."
+                },
+                {
+                    "role": "user", 
+                    "content": prompt
+                }
+            ],
+            temperature=0.3,
+            max_tokens=500
+        )
+        
+        # Procesar respuesta de OpenAI
+        ai_response = response.choices[0].message.content.strip()
+        
+        # Parsear la respuesta JSON de OpenAI
+        try:
+            resultado = json.loads(ai_response)
+        except json.JSONDecodeError:
+            # Si no es JSON válido, usar procesamiento de respaldo
+            resultado = procesar_comando_natural(texto, contexto, usuario)
+            resultado['respuesta_ai'] = ai_response  # Incluir respuesta original de AI
+        
+        return resultado
+        
+    except Exception as e:
+        # Fallback a procesamiento natural si OpenAI falla
+        print(f"Error OpenAI: {e}")
+        return procesar_comando_natural(texto, contexto, usuario)
+
+def crear_prompt_openai(texto, contexto, usuario):
+    """
+    Crea un prompt estructurado para OpenAI
+    """
+    prompt = f"""
+    ANALIZAR EL SIGUIENTE COMANDO Y RESPONDER EN FORMATO JSON:
+
+    COMANDO: "{texto}"
+    CONTEXTO: {contexto}
+    USUARIO: {usuario.username}
+
+    INSTRUCCIONES:
+    1. Analiza la intención del usuario
+    2. Identifica el tipo de acción requerida
+    3. Extrae parámetros relevantes
+    4. Genera una respuesta estructurada
+
+    FORMATO DE RESPUESTA JSON:
+    {{
+        "exito": boolean,
+        "intencion": "reporte_ventas|reporte_clientes|reporte_productos|busqueda|navegacion|accion_sistema",
+        "tipo_comando": "reporte|busqueda|navegacion|accion",
+        "texto_procesado": "texto interpretado",
+        "parametros": {{
+            "tipo_reporte": "ventas|clientes|productos|inventario",
+            "formato": "pdf|excel|csv|pantalla",
+            "fecha_inicio": "YYYY-MM-DD",
+            "fecha_fin": "YYYY-MM-DD",
+            "mes": "MM",
+            "año": "YYYY",
+            "categoria": "nombre_categoria",
+            "producto": "nombre_producto",
+            "ruta_destino": "/ruta/navegacion"
+        }},
+        "respuesta": {{
+            "mensaje": "respuesta amigable al usuario",
+            "accion_ejecutada": "descripción de la acción",
+            "datos_disponibles": boolean
+        }},
+        "confianza": 0.0-1.0
+    }}
+
+    ACCIONES DISPONIBLES:
+    - REPORTES: "ventas del mes", "clientes nuevos", "productos más vendidos", "inventario bajo"
+    - BÚSQUEDAS: "buscar producto X", "encontrar clientes de Lima"
+    - NAVEGACIÓN: "ir a pedidos", "ver mi perfil", "mostrar dashboard"
+
+    EJEMPLOS:
+
+    COMANDO: "Generar reporte de ventas de enero en PDF"
+    RESPUESTA: {{
+        "exito": true,
+        "intencion": "reporte_ventas",
+        "tipo_comando": "reporte",
+        "texto_procesado": "Generar reporte de ventas del mes de enero en formato PDF",
+        "parametros": {{
+            "tipo_reporte": "ventas",
+            "formato": "pdf",
+            "mes": "01",
+            "año": "2024"
+        }},
+        "respuesta": {{
+            "mensaje": "Voy a generar el reporte de ventas de enero en formato PDF",
+            "accion_ejecutada": "Iniciando generación de reporte",
+            "datos_disponibles": true
+        }},
+        "confianza": 0.95
+    }}
+
+    COMANDO: "Mostrar productos con stock bajo"
+    RESPUESTA: {{
+        "exito": true,
+        "intencion": "reporte_inventario",
+        "tipo_comando": "reporte",
+        "texto_procesado": "Generar reporte de productos con stock bajo",
+        "parametros": {{
+            "tipo_reporte": "inventario",
+            "filtro_stock": "bajo"
+        }},
+        "respuesta": {{
+            "mensaje": "Mostrando productos con stock bajo",
+            "accion_ejecutada": "Filtrando productos por stock bajo",
+            "datos_disponibles": true
+        }},
+        "confianza": 0.9
+    }}
+
+    COMANDO: "Buscar laptops gaming en oferta"
+    RESPUESTA: {{
+        "exito": true,
+        "intencion": "busqueda_productos",
+        "tipo_comando": "busqueda",
+        "texto_procesado": "Buscar laptops gaming con descuentos",
+        "parametros": {{
+            "categoria": "laptops",
+            "producto": "gaming",
+            "filtro": "ofertas"
+        }},
+        "respuesta": {{
+            "mensaje": "Buscando laptops gaming en oferta",
+            "accion_ejecutada": "Ejecutando búsqueda en catálogo",
+            "datos_disponibles": true
+        }},
+        "confianza": 0.88
+    }}
+
+    Responde SOLO con el JSON, sin texto adicional.
+    """
+
+    return prompt
+
 def procesar_comando_natural(texto, contexto, usuario):
     """
-    Procesa comandos en lenguaje natural usando expresiones regulares
+    Procesamiento de respaldo sin OpenAI (usando expresiones regulares)
     """
     texto = texto.lower().strip()
     resultado = {
@@ -118,60 +277,47 @@ def procesar_comando_natural(texto, contexto, usuario):
         'parametros': {},
         'exito': True,
         'respuesta': {},
-        'accion_ejecutada': None
-    }
-    
-    # Patrones para reportes
-    patrones_reportes = {
-        'reporte_ventas_mes': r'reporte.*ventas.*(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)',
-        'reporte_ventas_rango': r'reporte.*ventas.*(\d{1,2}/\d{1,2}/\d{4}).*(\d{1,2}/\d{1,2}/\d{4})',
-        'reporte_clientes': r'reporte.*clientes',
-        'reporte_productos': r'reporte.*productos',
-        'reporte_pdf': r'reporte.*pdf',
-        'reporte_excel': r'reporte.*excel',
-    }
-    
-    # Patrones para búsquedas
-    patrones_busqueda = {
-        'buscar_producto': r'buscar.*producto.*"([^"]+)"',
-        'buscar_cliente': r'buscar.*cliente.*"([^"]+)"',
-        'ver_stock': r'stock.*producto',
+        'confianza': 0.7
     }
     
     # Extraer parámetros comunes
     parametros = extraer_parametros_comunes(texto)
     resultado['parametros'] = parametros
     
-    # Determinar intención basada en patrones
-    if contexto == 'reports':
-        for intencion, patron in patrones_reportes.items():
-            if re.search(patron, texto):
-                resultado['intencion'] = intencion
-                resultado['tipo_comando'] = 'reporte'
-                break
+    # Detectar intención principal
+    if any(palabra in texto for palabra in ['reporte', 'informe', 'estadística', 'estadisticas']):
+        resultado['intencion'] = 'reporte_generico'
+        resultado['tipo_comando'] = 'reporte'
         
-        # Si no se detectó patrón específico, buscar palabras clave
-        if not resultado['intencion']:
-            if any(palabra in texto for palabra in ['reporte', 'informe', 'estadística']):
-                resultado['intencion'] = 'reporte_generico'
-                resultado['tipo_comando'] = 'reporte'
+        if 'ventas' in texto:
+            resultado['intencion'] = 'reporte_ventas'
+            resultado['parametros']['tipo_reporte'] = 'ventas'
+        elif 'clientes' in texto or 'usuarios' in texto:
+            resultado['intencion'] = 'reporte_clientes'
+            resultado['parametros']['tipo_reporte'] = 'clientes'
+        elif 'productos' in texto or 'inventario' in texto or 'stock' in texto:
+            resultado['intencion'] = 'reporte_productos'
+            resultado['parametros']['tipo_reporte'] = 'productos'
+            
+    elif any(palabra in texto for palabra in ['buscar', 'encontrar', 'mostrar']):
+        resultado['intencion'] = 'busqueda_generica'
+        resultado['tipo_comando'] = 'busqueda'
         
-        # Ejecutar acción si es un reporte
-        if resultado['intencion'] and 'reporte' in resultado['intencion']:
-            ejecutar_reporte_comando(resultado, usuario)
+    elif any(palabra in texto for palabra in ['ir a', 'ver', 'mostrar', 'abrir']):
+        resultado['intencion'] = 'navegacion'
+        resultado['tipo_comando'] = 'navegacion'
     
-    elif contexto == 'products':
-        for intencion, patron in patrones_busqueda.items():
-            if re.search(patron, texto):
-                resultado['intencion'] = intencion
-                resultado['tipo_comando'] = 'busqueda'
-                break
-    
-    # Si no se detectó intención específica
-    if not resultado['intencion']:
-        resultado['intencion'] = 'no_reconocida'
+    # Generar respuesta
+    if resultado['intencion']:
+        generar_respuesta_comando(resultado, usuario)
+    else:
         resultado['exito'] = False
-        resultado['respuesta'] = {'mensaje': 'No pude entender el comando. ¿Podrías reformularlo?'}
+        resultado['respuesta'] = {
+            'mensaje': 'No pude entender el comando. ¿Podrías reformularlo?',
+            'accion_ejecutada': 'none',
+            'datos_disponibles': False
+        }
+        resultado['confianza'] = 0.3
     
     return resultado
 
@@ -186,6 +332,8 @@ def extraer_parametros_comunes(texto):
         parametros['formato'] = 'excel'
     elif 'csv' in texto:
         parametros['formato'] = 'csv'
+    else:
+        parametros['formato'] = 'pantalla'
     
     # Extraer tipo de reporte
     if 'ventas' in texto:
@@ -194,6 +342,8 @@ def extraer_parametros_comunes(texto):
         parametros['tipo_reporte'] = 'clientes'
     elif 'productos' in texto:
         parametros['tipo_reporte'] = 'productos'
+    elif 'inventario' in texto or 'stock' in texto:
+        parametros['tipo_reporte'] = 'inventario'
     
     # Extraer meses
     meses = {
@@ -208,56 +358,50 @@ def extraer_parametros_comunes(texto):
             parametros['mes_nombre'] = mes_nombre.capitalize()
             break
     
+    # Extraer años
+    import re
+    años = re.findall(r'20\d{2}', texto)
+    if años:
+        parametros['año'] = años[0]
+    
     # Extraer fechas (patrón dd/mm/aaaa)
-    fechas = re.findall(r'(\d{1,2}/\d{1,2}/\d{4})', texto)
+    fechas = re.findall(r'(\d{1,2}/\d{1,2}/20\d{2})', texto)
     if len(fechas) >= 2:
         parametros['fecha_inicio'] = fechas[0]
         parametros['fecha_fin'] = fechas[1]
     elif len(fechas) == 1:
         parametros['fecha'] = fechas[0]
     
+    # Extraer productos o categorías específicas
+    if 'laptop' in texto or 'computadora' in texto:
+        parametros['categoria'] = 'laptops'
+    elif 'teléfono' in texto or 'celular' in texto:
+        parametros['categoria'] = 'smartphones'
+    elif 'oferta' in texto or 'descuento' in texto:
+        parametros['filtro'] = 'ofertas'
+    
     return parametros
 
-def ejecutar_reporte_comando(resultado, usuario):
-    """Ejecuta la generación de reporte basado en el comando"""
+def generar_respuesta_comando(resultado, usuario):
+    """Genera respuesta basada en el comando procesado"""
+    intencion = resultado['intencion']
     parametros = resultado['parametros']
     
-    # Mapear parámetros a formato de reporte
-    datos_reporte = {
-        'tipo_reporte': parametros.get('tipo_reporte', 'ventas'),
-        'formato_salida': parametros.get('formato', 'pdf')
+    mensajes = {
+        'reporte_ventas': f"Generando reporte de ventas",
+        'reporte_clientes': "Preparando análisis de clientes",
+        'reporte_productos': "Compilando datos de productos",
+        'reporte_inventario': "Analizando niveles de inventario",
+        'busqueda_generica': "Realizando búsqueda solicitada",
+        'navegacion': "Navegando a la sección indicada"
     }
     
-    # Procesar fechas
-    if 'fecha_inicio' in parametros and 'fecha_fin' in parametros:
-        datos_reporte['fecha_inicio'] = parametros['fecha_inicio']
-        datos_reporte['fecha_fin'] = parametros['fecha_fin']
-    elif 'mes' in parametros:
-        # Establecer rango del mes
-        from datetime import datetime
-        año_actual = datetime.now().year
-        fecha_inicio = f"{año_actual}-{parametros['mes']}-01"
-        # Calcular último día del mes
-        if parametros['mes'] in ['04', '06', '09', '11']:
-            ultimo_dia = '30'
-        elif parametros['mes'] == '02':
-            # Febrero (simplificado)
-            ultimo_dia = '28'
-        else:
-            ultimo_dia = '31'
-        fecha_fin = f"{año_actual}-{parametros['mes']}-{ultimo_dia}"
-        datos_reporte['fecha_inicio'] = fecha_inicio
-        datos_reporte['fecha_fin'] = fecha_fin
-    
-    # Aquí se integraría con el sistema de reportes
-    # Por ahora, simulamos la respuesta
     resultado['respuesta'] = {
-        'mensaje': f"Reporte de {datos_reporte['tipo_reporte']} generado exitosamente",
-        'tipo': datos_reporte['tipo_reporte'],
-        'formato': datos_reporte['formato_salida'],
-        'parametros': datos_reporte
+        'mensaje': mensajes.get(intencion, "Ejecutando comando"),
+        'accion_ejecutada': f"Procesando {intencion}",
+        'datos_disponibles': True,
+        'parametros_utilizados': parametros
     }
-    resultado['accion_ejecutada'] = 'generar_reporte'
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -280,10 +424,42 @@ def obtener_comandos_frecuentes(request):
             'categoria': 'reportes'
         },
         {
-            'comando': 'Buscar producto "refrigerador samsung"',
+            'comando': 'Buscar laptops gaming en oferta',
             'descripcion': 'Busca productos por nombre o descripción',
             'categoria': 'busqueda'
+        },
+        {
+            'comando': 'Ventas de la última semana',
+            'descripcion': 'Muestra el resumen de ventas de los últimos 7 días',
+            'categoria': 'reportes'
+        },
+        {
+            'comando': 'Productos más vendidos este mes',
+            'descripcion': 'Lista los productos con mayores ventas del mes',
+            'categoria': 'analytics'
         }
     ]
     
     return Response(comandos_sugeridos)
+
+# Nuevo endpoint específico para OpenAI
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def procesar_comando_openai_endpoint(request):
+    """Endpoint específico para procesamiento con OpenAI"""
+    try:
+        texto = request.data.get('command', '')
+        contexto = request.data.get('context', 'mobile_app')
+        
+        if not texto:
+            return Response({'error': 'Comando vacío'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        resultado = procesar_comando_openai(texto, contexto, request.user)
+        
+        return Response(resultado, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response(
+            {'error': f'Error procesando comando con AI: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
