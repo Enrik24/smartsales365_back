@@ -1,8 +1,16 @@
 # orders/views.py
+import stripe
+from django.conf import settings
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST
+from django.utils.decorators import method_decorator
+from django.views import View
+from rest_framework import status
 from rest_framework import generics, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated, IsAdminUser
+from rest_framework.permissions import IsAuthenticated, IsAdminUser,AllowAny
 from django.db import transaction
 from django.utils import timezone
 from django.shortcuts import get_object_or_404
@@ -13,6 +21,9 @@ from .serializers import (CarritoSerializer, DetalleCarritoSerializer,
                         DetallePedidoSerializer, ComprobanteSerializer,
                         PagoSerializer, DevolucionSerializer, 
                         SeguimientoPedidoSerializer)
+
+# Configurar la clave secreta de Stripe
+stripe.api_key = settings.STRIPE_SECRET_KEY
 
 class CarritoDetailView(generics.RetrieveAPIView):
     serializer_class = CarritoSerializer
@@ -85,7 +96,23 @@ def crear_pedido_desde_carrito(request):
     # Crear pedido
     pedido_serializer = PedidoCreateSerializer(data=request.data)
     if pedido_serializer.is_valid():
-        pedido = pedido_serializer.save(usuario=request.user)
+        # Generar numero_seguimiento
+        ultimo_pedido = Pedido.objects.order_by('id').last()
+        if ultimo_pedido:
+            # Extraer el número del último numero_seguimiento
+            try:
+                ultimo_numero = int(ultimo_pedido.numero_seguimiento.split('-')[1])
+                nuevo_numero = ultimo_numero + 1
+            except (AttributeError, IndexError, ValueError):
+                # Fallback si el numero_seguimiento no tiene el formato esperado o es nulo
+                nuevo_numero = (ultimo_pedido.id or 0) + 1
+        else:
+            # Si no hay pedidos, empezar desde 1
+            nuevo_numero = 1
+        
+        numero_seguimiento = f'ORD-{nuevo_numero:05d}'
+
+        pedido = pedido_serializer.save(usuario=request.user, numero_seguimiento=numero_seguimiento)
         monto_total = 0
         
         # Crear detalles del pedido y actualizar inventario
@@ -240,7 +267,26 @@ class DevolucionListCreateView(generics.ListCreateAPIView):
 # =============================================================================
 # VISTAS DE PAGOS
 # =============================================================================
-@api_view(['POST'])
+
+class PagoListView(generics.ListAPIView):
+    serializer_class = PagoSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        if self.request.user.is_staff:
+            return Pago.objects.select_related('pedido__usuario').all()
+        return Pago.objects.filter(pedido__usuario=self.request.user).select_related('pedido__usuario')
+
+class PagoDetailView(generics.RetrieveAPIView):
+    serializer_class = PagoSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        if self.request.user.is_staff:
+            return Pago.objects.select_related('pedido__usuario').all()
+        return Pago.objects.filter(pedido__usuario=self.request.user).select_related('pedido__usuario')
+
+""" @api_view(['POST'])
 @permission_classes([IsAdminUser])
 def procesar_pago_stripe(request, pedido_id):
     # Esta es una implementación básica - integrar con Stripe API
@@ -269,12 +315,51 @@ def procesar_pago_stripe(request, pedido_id):
     )
     
     serializer = PagoSerializer(pago)
-    return Response(serializer.data)
+    return Response(serializer.data) """
 
 @api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def procesar_pago_stripe(request, pedido_id):
+    """
+    Inicia el proceso de pago con Stripe Checkout Session
+    """
+    try:
+        pedido = get_object_or_404(Pedido, id=pedido_id, usuario=request.user)
+        
+        # Verificar que el pedido no tenga un pago ya procesado
+        if hasattr(pedido, 'pago'):
+            pago = pedido.pago
+            if pago.estado_pago == 'exitoso':
+                return Response(
+                    {'error': 'Este pedido ya ha sido pagado'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            elif pago.estado_pago == 'pendiente':
+                # Si ya hay un pago pendiente, devolver la URL de la sesión existente
+                if pago.stripe_checkout_session_id:
+                    try:
+                        session = stripe.checkout.Session.retrieve(pago.stripe_checkout_session_id)
+                        return Response({
+                            'sessionId': session.id,
+                            'checkoutUrl': session.url
+                        })
+                    except stripe.error.StripeError:
+                        # Si la sesión ya no es válida, crear una nueva
+                        pass
+        
+        # Crear una nueva Checkout Session
+        return crear_checkout_session_stripe(request, pedido_id)
+        
+    except Exception as e:
+        return Response(
+            {'error': str(e)}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+""" @api_view(['POST'])
 @permission_classes([IsAdminUser])
 def confirmar_pago_stripe(request):
-    """Confirmar pago desde webhook de Stripe"""
+    Confirmar pago desde webhook de Stripe
     stripe_payment_intent_id = request.data.get('stripe_payment_intent_id')
     
     if not stripe_payment_intent_id:
@@ -285,7 +370,59 @@ def confirmar_pago_stripe(request):
         pago.confirmar(stripe_payment_intent_id)
         return Response({'mensaje': 'Pago confirmado correctamente'})
     except Pago.DoesNotExist:
-        return Response({'error': 'Pago no encontrado'}, status=status.HTTP_404_NOT_FOUND)
+        return Response({'error': 'Pago no encontrado'}, status=status.HTTP_404_NOT_FOUND) """
+# Reemplaza tu función actual con esta
+@api_view(['POST'])
+@permission_classes([AllowAny]) # <-- CORRECCIÓN: Permitir llamadas externas
+def confirmar_pago_stripe(request):
+    """
+    Webhook de Stripe para confirmar pagos exitosos.
+    """
+    payload = request.body
+    sig_header = request.META.get('HTTP_STRIPE_SIGNATURE')
+
+    try:
+        # CORRECCIÓN: Verificar la firma para asegurar que la llamada es legítima
+        event = stripe.Webhook.construct_event(
+            payload, sig_header, settings.STRIPE_WEBHOOK_SECRET
+        )
+    except ValueError as e:
+        # Payload inválido
+        return Response(status=status.HTTP_400_BAD_REQUEST)
+    except stripe.error.SignatureVerificationError as e:
+        # Firma inválida (no es una llamada real de Stripe)
+        return Response(status=status.HTTP_400_BAD_REQUEST)
+
+    # Manejar el evento de checkout completado
+    if event.type == 'checkout.session.completed':
+        session = event['data']['object'] # Contiene toda la info de la sesión
+
+        # Obtenemos los IDs que guardamos en los metadatos al crear la sesión
+        pedido_id = session['metadata']['pedido_id']
+        pago_id = session['metadata']['pago_id']
+        stripe_payment_intent_id = session.get('payment_intent') # El ID del pago real
+
+        try:
+            # Buscamos el pago por su ID, que es más seguro que por el payment_intent_id
+            pago = Pago.objects.get(id=pago_id)
+            
+            # Usamos tu método del modelo para confirmar
+            pago.confirmar(stripe_payment_intent_id)
+            
+            # O si no tienes ese método, lo actualizas manualmente:
+            # pago.estado_pago = 'exitoso'
+            # pago.stripe_payment_intent_id = stripe_payment_intent_id
+            # pago.fecha_pago = timezone.now()
+            # pago.save()
+
+            return Response({'mensaje': 'Pago confirmado correctamente'}, status=status.HTTP_200_OK)
+
+        except Pago.DoesNotExist:
+            return Response({'error': 'Pago no encontrado'}, status=status.HTTP_404_NOT_FOUND)
+    else:
+        # Manejar otros tipos de eventos si es necesario
+        return Response({'mensaje': f'Evento no manejado: {event.type}'}, status=status.HTTP_200_OK)
+
 
 @api_view(['POST'])
 @permission_classes([IsAdminUser])
@@ -410,3 +547,149 @@ def obtener_historial_seguimiento(request, pedido_id):
         return Response(serializer.data)
     except Pedido.DoesNotExist:
         return Response({'error': 'Pedido no encontrado'}, status=status.HTTP_404_NOT_FOUND)
+    
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def crear_checkout_session_stripe(request, pedido_id):
+    """
+    Crea una Checkout Session de Stripe para el pedido especificado
+    """
+    try:
+        pedido = get_object_or_404(Pedido, id=pedido_id, usuario=request.user)
+        
+        # Si el pedido ya está pagado, no se puede volver a pagar.
+        if hasattr(pedido, 'pago') and pedido.pago.estado_pago == 'exitoso':
+            return Response(
+                {'error': 'Este pedido ya ha sido pagado.'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Busca un pago existente o crea uno nuevo.
+        # Esto permite reintentar un pago si la sesión anterior falló o expiró.
+        pago, created = Pago.objects.get_or_create(
+            pedido=pedido,
+            defaults={
+                'monto': pedido.monto_total,
+                'estado_pago': 'pendiente',
+                'metodo_pago': 'tarjeta'  # Asignamos el método de pago aquí
+            }
+        )
+
+        # Si el pago no es nuevo y no está pendiente, algo está mal.
+        if not created and pago.estado_pago != 'pendiente':
+             # Opcional: podrías querer resetear el estado a 'pendiente' o manejarlo de otra forma
+             pago.estado_pago = 'pendiente'
+             pago.stripe_checkout_session_id = None
+             pago.stripe_payment_intent_id = None
+             pago.save()
+
+        # Crear Checkout Session
+        checkout_session = stripe.checkout.Session.create(
+            payment_method_types=['card'],
+            line_items=[
+                {
+                    'price_data': {
+                        'currency': 'BOB',  # Ajustar según tu moneda
+                        'product_data': {
+                            'name': f'Pedido #{pedido.id}',
+                            'description': f'Productos del pedido #{pedido.id}',
+                        },
+                        'unit_amount': int(pedido.monto_total * 100),  # Stripe trabaja en centavos
+                    },
+                    'quantity': 1,
+                },
+            ],
+            mode='payment',
+            success_url=f"{settings.FRONTEND_URL}/pago/exitoso?session_id={{CHECKOUT_SESSION_ID}}",
+            cancel_url=f"{settings.FRONTEND_URL}/pago/cancelado?session_id={{CHECKOUT_SESSION_ID}}",
+            metadata={
+                'pedido_id': pedido.id,
+                'pago_id': pago.id
+            }
+        )
+        
+        # Guardar el ID de la sesión en el registro de pago
+        pago.stripe_checkout_session_id = checkout_session.id
+        pago.save()
+        
+        return Response({
+            'sessionId': checkout_session.id,
+            'checkoutUrl': checkout_session.url
+        })
+        
+    except Exception as e:
+        return Response(
+            {'error': str(e)}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+@method_decorator(csrf_exempt, name='dispatch')
+class StripeWebhookView(View):
+    """
+    Vista para procesar webhooks de Stripe
+    """
+    def post(self, request, *args, **kwargs):
+        payload = request.body
+        sig_header = request.META.get('HTTP_STRIPE_SIGNATURE')
+        event = None
+
+        try:
+            event = stripe.Webhook.construct_event(
+                payload, sig_header, settings.STRIPE_WEBHOOK_SECRET
+            )
+        except ValueError as e:
+            # Payload inválido
+            return JsonResponse({'error': str(e)}, status=400)
+        except stripe.error.SignatureVerificationError as e:
+            # Firma inválida
+            return JsonResponse({'error': str(e)}, status=400)
+
+        # Manejar el evento
+        if event['type'] == 'checkout.session.completed':
+            session = event['data']['object']
+            
+            # Obtener el ID del pago desde los metadatos
+            pago_id = session['metadata']['pago_id']
+            payment_intent_id = session['payment_intent']
+            
+            try:
+                # Actualizar el registro de pago
+                pago = Pago.objects.get(id=pago_id)
+                pago.confirmar(payment_intent_id)
+                
+                # Actualizar el estado del pedido
+                pedido = pago.pedido
+                pedido.estado_pedido = 'confirmado'
+                pedido.save()
+                
+                # Crear comprobante
+                from .models import Comprobante
+                Comprobante.objects.create(
+                    pedido=pedido,
+                    tipo_comprobante='factura' if pedido.monto_total > 700 else 'boleta'
+                )
+                
+                return JsonResponse({'status': 'success'}, status=200)
+                
+            except Pago.DoesNotExist:
+                return JsonResponse({'error': 'Pago no encontrado'}, status=404)
+        
+        elif event['type'] == 'checkout.session.expired':
+            session = event['data']['object']
+            
+            # Obtener el ID del pago desde los metadatos
+            pago_id = session['metadata']['pago_id']
+            
+            try:
+                # Actualizar el registro de pago como fallido
+                pago = Pago.objects.get(id=pago_id)
+                pago.fallar('La sesión de pago expiró')
+                
+                return JsonResponse({'status': 'success'}, status=200)
+                
+            except Pago.DoesNotExist:
+                return JsonResponse({'error': 'Pago no encontrado'}, status=404)
+        
+        # ... manejar otros tipos de eventos si es necesario
+        
+        return JsonResponse({'status': 'success'}, status=200)

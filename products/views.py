@@ -2,7 +2,7 @@
 from rest_framework import generics, filters, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated, IsAdminUser
+from rest_framework.permissions import IsAuthenticated, IsAdminUser, AllowAny
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Q, F
 from .models import Categoria, Marca, Producto, Inventario, Favorito
@@ -13,20 +13,36 @@ from .serializers import (CategoriaSerializer, MarcaSerializer,
 class CategoriaListCreateView(generics.ListCreateAPIView):
     queryset = Categoria.objects.all()
     serializer_class = CategoriaSerializer
-    permission_classes = [IsAuthenticated]
     
     def get_permissions(self):
         if self.request.method == 'POST':
+            return [IsAdminUser()]
+        return [AllowAny()]
+
+class CategoriaDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = Categoria.objects.all()
+    serializer_class = CategoriaSerializer
+    
+    def get_permissions(self):
+        if self.request.method in ['PUT', 'PATCH', 'DELETE']:
             return [IsAdminUser()]
         return [IsAuthenticated()]
 
 class MarcaListCreateView(generics.ListCreateAPIView):
     queryset = Marca.objects.all()
     serializer_class = MarcaSerializer
-    permission_classes = [IsAuthenticated]
     
     def get_permissions(self):
         if self.request.method == 'POST':
+            return [IsAdminUser()]
+        return [AllowAny()]
+
+class MarcaDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = Marca.objects.all()
+    serializer_class = MarcaSerializer
+    
+    def get_permissions(self):
+        if self.request.method in ['PUT', 'PATCH', 'DELETE']:
             return [IsAdminUser()]
         return [IsAuthenticated()]
 
@@ -38,14 +54,14 @@ class ProductoListCreateView(generics.ListCreateAPIView):
     ordering_fields = ['precio', 'fecha_creacion', 'nombre']
     
     def get_serializer_class(self):
-        if self.request.method == 'POST':
+        if self.request.method in ['POST', 'PUT', 'PATCH']:
             return ProductoCreateSerializer
         return ProductoSerializer
     
     def get_permissions(self):
         if self.request.method == 'POST':
             return [IsAdminUser()]
-        return [IsAuthenticated()]
+        return [AllowAny()]
     
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -58,6 +74,13 @@ class ProductoListCreateView(generics.ListCreateAPIView):
 class ProductoDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Producto.objects.select_related('categoria', 'marca', 'inventario')
     serializer_class = ProductoSerializer
+    lookup_field = 'slug'
+    
+    
+    def get_serializer_class(self):
+        if self.request.method in ['PUT', 'PATCH']:
+            return ProductoCreateSerializer  # Usar el mismo serializer para actualizar
+        return ProductoSerializer
     
     def get_permissions(self):
         if self.request.method in ['PUT', 'PATCH', 'DELETE']:

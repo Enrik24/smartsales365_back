@@ -15,13 +15,16 @@ urlpatterns = [
     
     # Gestión de usuarios
     path('usuarios/', views.UsuarioListView.as_view(), name='lista_usuarios'),
+    path('clientes/', views.ClienteListView.as_view(), name='lista_clientes'),
     path('usuarios/<pk>/', views.UsuarioDetailView.as_view(), name='detalle_usuario'),
     path('usuarios/me/', views.UsuarioDetailView.as_view(), name='mi_perfil'), # Debe ir antes que <pk> si pk no es int
     path('usuarios/me/roles/', views.obtener_mis_roles, name='mis_roles'),
     
     # Roles y permisos
     path('roles/', views.RolListCreateView.as_view(), name='lista_roles'),
+    path('roles/<int:pk>/', views.RolDetailView.as_view(), name='detalle_rol'),
     path('permisos/', views.PermisoListCreateView.as_view(), name='lista_permisos'),
+    path('permisos/<int:pk>/', views.PermisoDetailView.as_view(), name='detalle_permiso'),
     path('usuario-roles/', views.UsuarioRolListCreateView.as_view(), name='usuario_roles'),
     path('rol-permisos/', views.RolPermisoListCreateView.as_view(), name='rol_permisos'),
 

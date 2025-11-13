@@ -1,36 +1,21 @@
 # system/views.py
 from rest_framework import generics, permissions, status
 from django_filters.rest_framework import DjangoFilterBackend
-from .models import BitacoraSistema, ConfiguracionSistema
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
+
+from .models import BitacoraSistema, ConfiguracionSistema
 from .serializers import (BitacoraSistemaSerializer, BitacoraSistemaCreateSerializer, 
                         ConfiguracionSistemaSerializer)
+from .filters import BitacoraSistemaFilter
 
 class BitacoraSistemaListView(generics.ListAPIView):
     queryset = BitacoraSistema.objects.select_related('usuario').all()
     serializer_class = BitacoraSistemaSerializer
     permission_classes = [permissions.IsAdminUser]
     filter_backends = [DjangoFilterBackend]
-    filterset_fields = ['estado', 'usuario']
-    
-    def get_queryset(self):
-        queryset = super().get_queryset()
-        
-        # Filtrar por fecha si se proporciona
-        fecha_desde = self.request.query_params.get('fecha_desde')
-        fecha_hasta = self.request.query_params.get('fecha_hasta')
-        accion = self.request.query_params.get('accion')
-        
-        if fecha_desde:
-            queryset = queryset.filter(fecha_accion__gte=fecha_desde)
-        if fecha_hasta:
-            queryset = queryset.filter(fecha_accion__lte=fecha_hasta)
-        if accion:
-            queryset = queryset.filter(accion__icontains=accion)
-        
-        return queryset
+    filterset_class = BitacoraSistemaFilter
 
 class BitacoraSistemaCreateView(generics.CreateAPIView):
     """View para que el frontend registre acciones en la bitácora"""

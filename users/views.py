@@ -242,6 +242,15 @@ class UsuarioListView(generics.ListAPIView):
     serializer_class = UsuarioSerializer
     permission_classes = [IsAuthenticated]
 
+
+class ClienteListView(generics.ListAPIView):
+    serializer_class = UsuarioSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Usuario.objects.obtener_por_rol('Cliente')
+
+
 class UsuarioDetailView(generics.RetrieveUpdateAPIView):
     queryset = Usuario.objects.all()
     permission_classes = [IsAuthenticated]
@@ -273,6 +282,11 @@ class PermisoListCreateView(generics.ListCreateAPIView):
     serializer_class = PermisoSerializer
     permission_classes = [IsAuthenticated]
 
+class PermisoDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = Permiso.objects.all()
+    serializer_class = PermisoSerializer
+    permission_classes = [IsAuthenticated]
+
 class UsuarioRolListCreateView(generics.ListCreateAPIView):
     queryset = UsuarioRol.objects.all()
     serializer_class = UsuarioRolSerializer
@@ -281,4 +295,10 @@ class UsuarioRolListCreateView(generics.ListCreateAPIView):
 class RolPermisoListCreateView(generics.ListCreateAPIView):
     queryset = RolPermiso.objects.all()
     serializer_class = RolPermisoSerializer
+    permission_classes = [IsAuthenticated]
+
+
+class RolDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = Rol.objects.all()
+    serializer_class = RolSerializer
     permission_classes = [IsAuthenticated]

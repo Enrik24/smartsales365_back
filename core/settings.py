@@ -15,6 +15,7 @@ from pathlib import Path
 from datetime import timedelta
 from decouple import config
 
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -59,6 +60,7 @@ INSTALLED_APPS = [
     'voice_commands',
     
     'system',  # ✅ AÑADIR
+    'cloudinary',
 ]
 
 MIDDLEWARE = [
@@ -186,9 +188,8 @@ CORS_ALLOW_CREDENTIALS = True
 #CORS_ALLOW_ALL_ORIGINS = DEBUG
 
 # Stripe Configuration
-STRIPE_PUBLISHABLE_KEY = config('STRIPE_PUBLISHABLE_KEY', default='')
-STRIPE_SECRET_KEY = config('STRIPE_SECRET_KEY', default='')
-STRIPE_WEBHOOK_SECRET = config('STRIPE_WEBHOOK_SECRET', default='')
+STRIPE_SECRET_KEY = config('STRIPE_SECRET_KEY')
+STRIPE_WEBHOOK_SECRET = config('STRIPE_WEBHOOK_SECRET')
 
 # Swagger Configuration
 SWAGGER_SETTINGS = {
@@ -215,4 +216,32 @@ EMAIL_USE_TLS = True
 EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='')
 EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
 
-FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:5173/')
+FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:5173')
+
+# ================================
+# CLOUDINARY
+# ================================
+CLOUDINARY_CLOUD_NAME = config('CLOUDINARY_CLOUD_NAME')
+CLOUDINARY_API_KEY = config('CLOUDINARY_API_KEY')
+CLOUDINARY_API_SECRET = config('CLOUDINARY_API_SECRET')
+
+# Para subir media desde DRF
+DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
+
+# Configuración adicional para PDFs y otros recursos
+CLOUDINARY_STORAGE = {
+    'CLOUD_NAME': CLOUDINARY_CLOUD_NAME,
+    'API_KEY': CLOUDINARY_API_KEY,
+    'API_SECRET': CLOUDINARY_API_SECRET,
+}
+
+MEDIA_URL = '/media/'
+
+import cloudinary
+import cloudinary.uploader
+
+cloudinary.config(
+    cloud_name=CLOUDINARY_CLOUD_NAME,
+    api_key=CLOUDINARY_API_KEY,
+    api_secret=CLOUDINARY_API_SECRET,
+)

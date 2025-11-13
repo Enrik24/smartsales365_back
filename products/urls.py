@@ -4,9 +4,11 @@ from . import views
 
 urlpatterns = [
     path('categorias/', views.CategoriaListCreateView.as_view(), name='lista_categorias'),
+    path('categorias/<int:pk>/', views.CategoriaDetailView.as_view(), name='detalle_categoria'),
     path('marcas/', views.MarcaListCreateView.as_view(), name='lista_marcas'),
+    path('marcas/<int:pk>/', views.MarcaDetailView.as_view(), name='detalle_marca'),
     path('productos/', views.ProductoListCreateView.as_view(), name='lista_productos'),
-    path('productos/<int:pk>/', views.ProductoDetailView.as_view(), name='detalle_producto'),
+    path('productos/<slug:slug>/', views.ProductoDetailView.as_view(), name='detalle_producto'),
     path('inventario/', views.InventarioListView.as_view(), name='lista_inventario'),
     path('inventario/<int:pk>/', views.InventarioUpdateView.as_view(), name='actualizar_inventario'),
     path('inventario/bajo-stock/', views.productos_bajo_stock, name='productos_bajo_stock'),
