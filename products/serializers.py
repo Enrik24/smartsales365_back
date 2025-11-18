@@ -1,7 +1,7 @@
 # products/serializers.py
 
 from rest_framework import serializers
-from .models import Categoria, Marca, Producto, Inventario, Favorito
+from .models import Categoria, Marca, Producto, Inventario, Favorito, CategoriaEnvio
 import cloudinary
 import cloudinary.uploader
 
@@ -15,11 +15,20 @@ class MarcaSerializer(serializers.ModelSerializer):
         model = Marca
         fields = '__all__'
 
+# Agregar después de MarcaSerializer
+class CategoriaEnvioSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CategoriaEnvio
+        fields = '__all__'
+
 class ProductoSerializer(serializers.ModelSerializer):
     categoria_nombre = serializers.CharField(source='categoria.nombre_categoria', read_only=True)
     marca_nombre = serializers.CharField(source='marca.nombre_marca', read_only=True)
     stock_actual = serializers.IntegerField(source='inventario.stock_actual', read_only=True)
     stock_minimo = serializers.IntegerField(source='inventario.stock_minimo', read_only=True)
+    # AGREGAR esta línea
+    categoria_envio_nombre = serializers.CharField(source='categoria_envio.nombre', read_only=True)
+    categoria_envio_tarifa = serializers.DecimalField(source='categoria_envio.tarifa', read_only=True, max_digits=10, decimal_places=2)
 
     class Meta:
         model = Producto
@@ -29,7 +38,8 @@ class ProductoSerializer(serializers.ModelSerializer):
                   'fecha_creacion', 'stock_actual', 'stock_minimo', 'modelo', 
                   'voltaje', 'garantia_meses', 'eficiencia_energetica', 'color', 
                   'peso', 'alto', 'ancho', 'profundidad', 'costo', 
-                  'envio_gratis', 'destacado')
+                  'envio_gratis', 'destacado', 'categoria_envio',  # ← AGREGAR
+                  'categoria_envio_nombre', 'categoria_envio_tarifa')  # ← AGREGAR
 
 class ProductoCreateSerializer(serializers.ModelSerializer):
     stock_inicial = serializers.IntegerField(write_only=True, required=False, default=0)
@@ -41,7 +51,7 @@ class ProductoCreateSerializer(serializers.ModelSerializer):
         model = Producto
         fields = (
             'sku', 'nombre', 'descripcion', 'precio', 'precio_original',
-            'categoria', 'marca', 'estado',
+            'categoria', 'marca', 'estado', 'categoria_envio',  # ← AGREGAR
             'stock_inicial', 'stock_minimo',
             'imagen_file', 'ficha_tecnica_file',
             'modelo', 'voltaje', 'garantia_meses', 'eficiencia_energetica', 'color',

@@ -5,10 +5,12 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, IsAdminUser, AllowAny
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Q, F
-from .models import Categoria, Marca, Producto, Inventario, Favorito
+from .models import Categoria, Marca, Producto, Inventario, Favorito, CategoriaEnvio
 from .serializers import (CategoriaSerializer, MarcaSerializer, 
                         ProductoSerializer, ProductoCreateSerializer,
-                        InventarioSerializer, FavoritoSerializer)
+                        InventarioSerializer, FavoritoSerializer,
+                        CategoriaEnvioSerializer)
+from django.db.models import Max
 
 class CategoriaListCreateView(generics.ListCreateAPIView):
     queryset = Categoria.objects.all()
@@ -203,3 +205,97 @@ def verificar_favorito(request, producto_id):
     """Verificar si producto está en favoritos"""
     esta_en_favoritos = Favorito.esta_en_favoritos(request.user.id, producto_id)
     return Response({'esta_en_favoritos': esta_en_favoritos})
+
+
+# =============================================================================
+# AGREGAR VIEW DE CategoriaEnvio
+# =============================================================================
+class CategoriaEnvioListCreateView(generics.ListCreateAPIView):
+    queryset = CategoriaEnvio.objects.all()
+    serializer_class = CategoriaEnvioSerializer
+    
+    def get_permissions(self):
+        if self.request.method == 'POST':
+            return [IsAdminUser()]
+        return [AllowAny()]
+
+class CategoriaEnvioDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = CategoriaEnvio.objects.all()
+    serializer_class = CategoriaEnvioSerializer
+    
+    def get_permissions(self):
+        if self.request.method in ['PUT', 'PATCH', 'DELETE']:
+            return [IsAdminUser()]
+        return [IsAuthenticated()]
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def calcular_envio_carrito(request):
+    """Calcular costo de envío para el carrito del usuario"""
+    try:
+        from orders.models import Carrito, DetalleCarrito
+        
+        # Obtener carrito del usuario
+        carrito = Carrito.objects.get(usuario=request.user)
+        items_carrito = DetalleCarrito.objects.filter(carrito=carrito)
+        
+        if not items_carrito.exists():
+            return Response({'costo_envio': 0, 'moneda': 'USD'})
+        
+        # Calcular envío: tomar la categoría más alta
+        costo_envio = CategoriaEnvio.objects.filter(
+            producto__detallecarrito__carrito=carrito
+        ).aggregate(
+            max_tarifa=Max('tarifa')
+        )['max_tarifa'] or 0
+        
+        return Response({
+            'costo_envio': float(costo_envio),
+            'moneda': 'USD'
+        })
+        
+    except Carrito.DoesNotExist:
+        return Response({'costo_envio': 0, 'moneda': 'USD'})
+    except Exception as e:
+        return Response(
+            {'error': 'Error calculando envío'}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+@api_view(['POST'])
+@permission_classes([IsAdminUser])
+def actualizar_categorias_envio_masivo(request):
+    """Actualizar categorías de envío para todos los productos basado en peso/dimensiones"""
+    try:
+        productos = Producto.objects.all()
+        actualizados = 0
+        
+        for producto in productos:
+            if producto.peso and producto.alto and producto.ancho and producto.profundidad:
+                # Calcular peso volumétrico
+                peso_volumetrico = (producto.alto * producto.ancho * producto.profundidad) / 5000
+                peso_final = max(float(producto.peso), peso_volumetrico)
+                
+                # Determinar categoría
+                if peso_final <= 5:
+                    categoria = CategoriaEnvio.objects.get(nombre='Pequeños')
+                elif peso_final <= 25:
+                    categoria = CategoriaEnvio.objects.get(nombre='Medianos')
+                else:
+                    categoria = CategoriaEnvio.objects.get(nombre='Grandes')
+                
+                if producto.categoria_envio != categoria:
+                    producto.categoria_envio = categoria
+                    producto.save()
+                    actualizados += 1
+        
+        return Response({
+            'mensaje': f'Se actualizaron {actualizados} productos',
+            'actualizados': actualizados
+        })
+        
+    except CategoriaEnvio.DoesNotExist:
+        return Response(
+            {'error': 'Las categorías de envío no están configuradas'}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )

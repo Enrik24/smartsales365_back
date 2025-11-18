@@ -54,6 +54,13 @@ class Usuario(AbstractUser):
     estado = models.CharField(max_length=50, default='activo')
     fecha_registro = models.DateTimeField(auto_now_add=True)
     ultimo_login = models.DateTimeField(null=True, blank=True)
+    # Campo para documento de identidad
+    documento_identidad = models.CharField(
+        max_length=30,
+        null=True,
+        blank=True,
+        help_text="Ej: CI en Bolivia, DNI en Argentina, Cédula en Colombia"
+    )
     
     # Establecer email como campo de identificación
     USERNAME_FIELD = 'email'

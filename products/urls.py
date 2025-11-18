@@ -21,4 +21,10 @@ urlpatterns = [
     path('inventario/<int:producto_id>/aumentar-stock/', views.aumentar_stock, name='aumentar_stock'),
     path('inventario/alertas-bajo-stock/', views.alertas_bajo_stock, name='alertas_bajo_stock'),
     path('favoritos/verificar/<int:producto_id>/', views.verificar_favorito, name='verificar_favorito'),
+    # NUEVAS URLs para envíos
+    path('categorias-envio/', views.CategoriaEnvioListCreateView.as_view(), name='lista_categorias_envio'),
+    path('categorias-envio/<int:pk>/', views.CategoriaEnvioDetailView.as_view(), name='detalle_categoria_envio'),
+    path('calcular-envio/', views.calcular_envio_carrito, name='calcular_envio'),
+    path('actualizar-categorias-envio/', views.actualizar_categorias_envio_masivo, name='actualizar_categorias_envio'),
+    
 ]

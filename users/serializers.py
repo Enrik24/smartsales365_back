@@ -13,7 +13,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
         #         'ultimo_login', 'is_active', 'is_staff')
         fields = ('id', 'email', 'nombre', 'apellido', 
                 'telefono', 'direccion', 'estado', 'fecha_registro', 
-                'ultimo_login', 'is_active', 'is_staff', 'roles')
+                'ultimo_login', 'is_active', 'is_staff', 'roles','documento_identidad')
         read_only_fields = ('fecha_registro', 'ultimo_login', 'is_active', 'is_staff')
 
     def get_roles(self, obj):
@@ -32,7 +32,7 @@ class PerfilUsuarioUpdateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Usuario
-        fields = ('nombre', 'apellido', 'telefono', 'direccion', 'roles')
+        fields = ('nombre', 'apellido', 'telefono', 'direccion', 'roles', 'documento_identidad')
 
     def update(self, instance, validated_data):
         # Actualizar roles si se proporcionan
@@ -55,7 +55,7 @@ class UsuarioRegistroSerializer(serializers.ModelSerializer):
     class Meta:
         model = Usuario
         fields = ('email', 'password','confirm_password', 'nombre', 'apellido',
-                'telefono', 'direccion', 'rol')
+                'telefono', 'direccion', 'rol', 'documento_identidad')
         extra_kwargs = {
             'email': {'required': True},
             'nombre': {'required': True},

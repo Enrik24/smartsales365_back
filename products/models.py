@@ -18,6 +18,19 @@ class Marca(models.Model):
     class Meta:
         db_table = 'marcas'
 
+# Agregar después de la clase Marca
+class CategoriaEnvio(models.Model):
+    nombre = models.CharField(max_length=100)
+    tarifa = models.DecimalField(max_digits=10, decimal_places=2)
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        db_table = 'categorias_envio'
+        verbose_name_plural = 'Categorías de Envío'
+    
+    def __str__(self):
+        return f"{self.nombre} - ${self.tarifa}"
+
 class Producto(models.Model):
     ESTADOS = (
         ('activo', 'Activo'),
@@ -52,6 +65,13 @@ class Producto(models.Model):
     costo = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)  # Nuevo
     envio_gratis = models.BooleanField(default=False)  # Nuevo
     destacado = models.BooleanField(default=False)  # Nuevo
+    # AGREGAR esta línea en los campos del producto (después de 'destacado')
+    categoria_envio = models.ForeignKey(
+        CategoriaEnvio, 
+        on_delete=models.PROTECT,
+        null=True, 
+        blank=True
+    )
     fecha_actualizacion = models.DateTimeField(auto_now=True)  # Nuevo
     
 
