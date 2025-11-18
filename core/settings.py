@@ -121,8 +121,6 @@ DATABASES = {
             'PASSWORD': os.getenv('DB_PASSWORD', '12345'),
             'HOST': os.getenv('DB_HOST', 'localhost'),
             'PORT': os.getenv('DB_PORT', '5432'),
-            conn_max_age=600,
-            ssl_require=True
     }
 }
 
