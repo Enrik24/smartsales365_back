@@ -101,9 +101,9 @@ class Producto(models.Model):
 
 class Inventario(models.Model):
     producto = models.OneToOneField(Producto, on_delete=models.CASCADE)
-    stock_actual = models.IntegerField(default=0)
+    stock_actual = models.IntegerField(default=0,null=True, blank=True)
     stock_minimo = models.IntegerField(default=0, null=True, blank=True)
-    ultima_actualizacion = models.DateTimeField(auto_now=True)
+    ultima_actualizacion = models.DateTimeField(auto_now=True,null=True, blank=True)
     
     def ajustar_stock(self, nueva_cantidad):
         """Establece un nuevo nivel de stock"""
