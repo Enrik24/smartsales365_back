@@ -53,7 +53,10 @@ class Pedido(models.Model):
     direccion_envio = models.TextField()
     direccion_facturacion = models.TextField(null=True, blank=True)
     numero_seguimiento = models.CharField(max_length=100, unique=True, null=True, blank=True)
-    
+    monto_total = models.DecimalField(max_digits=10, decimal_places=2)
+    subtotal_productos = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    costo_envio = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    monto_impuestos = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     def confirmar(self):
         """Confirmar pedido"""
         self.estado_pedido = 'confirmado'
@@ -177,9 +180,9 @@ class Pago(models.Model):
     metodo_pago = models.CharField(max_length=50, choices=METODOS_PAGO, null=True, blank=True)
     respuesta_stripe = models.JSONField(null=True, blank=True)
     
-    def confirmar(self, stripe_payment_intent_id):
+    def confirmar(self, payment_intent_id):
         """Confirmar pago exitoso"""
-        self.stripe_payment_intent_id = stripe_payment_intent_id
+        self.stripe_payment_intent_id = payment_intent_id
         self.estado_pago = 'exitoso'
         self.fecha_pago = timezone.now()
         self.save()

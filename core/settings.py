@@ -15,22 +15,26 @@ from pathlib import Path
 from datetime import timedelta
 from decouple import config
 import dj_database_url
+from dotenv import load_dotenv
+import os
 
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+#load environment variables from .env file
+load_dotenv()
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-#SECRET_KEY = config('SECRET_KEY', default='django-insecure-your-secret-key-here')
-STRIPE_SECRET_KEY=os.environ.get('STRIPE_SECRET_KEY')
+SECRET_KEY = config('SECRET_KEY', default='django-insecure-your-secret-key-here')
+#STRIPE_SECRET_KEY=os.environ.get('STRIPE_SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-#DEBUG = config('DEBUG', default=True, cast=bool)
-DEBUG = os.environ.get('RENDER') != 'True'
+DEBUG = config('DEBUG', default=True, cast=bool)
+#DEBUG = os.environ.get('RENDER') != 'True'
 
 ALLOWED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0']
 
@@ -67,7 +71,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
-    'whitenoise.middleware.WhiteNoiseMiddleware',
+    #'whitenoise.middleware.WhiteNoiseMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -101,23 +105,24 @@ WSGI_APPLICATION = 'core.wsgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
-if os.environ.get('DATABASE_URL'):
-    DATABASES = {
-        'default': dj_database_url.parse(os.environ.get('DATABASE_URL'))
-    }
-else:
+
+#if os.environ.get('DATABASE_URL'):
+#    DATABASES = {
+#        'default': dj_database_url.parse(os.environ.get('DATABASE_URL'))
+#    }
+#else:
     # Default local database configuration
 
-    DATABASES = {
-        'default': {
+DATABASES = {
+    'default': {
             'ENGINE': 'django.db.backends.postgresql',
-            'NAME': config('DB_NAME', default='smartsales365'),
-            'USER': config('DB_USER', default='postgres'),
-            'PASSWORD': config('DB_PASSWORD', default='12345'),
-            'HOST': config('DB_HOST', default='localhost'),
-            'PORT': config('DB_PORT', default='5432'),
-        }
+            'NAME': os.getenv('DB_NAME', 'smartsales365'),
+            'USER': os.getenv('DB_USER','postgres'),
+            'PASSWORD': os.getenv('DB_PASSWORD', '12345'),
+            'HOST': os.getenv('DB_HOST', 'localhost'),
+            'PORT': os.getenv('DB_PORT', '5432'),
     }
+}
 
 
 # Password validation
@@ -151,10 +156,10 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
-#STATIC_URL = 'static/'
-#STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
-STATIC_ROOT=os.path.join(BASE_DIR, 'staticfiles')
-STATIC_URL='/static/'
+STATIC_URL = 'static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+#STATIC_ROOT=os.path.join(BASE_DIR, 'staticfiles')
+#STATIC_URL='/static/'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field

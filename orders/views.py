@@ -1,5 +1,6 @@
 # orders/views.py
 import stripe
+import uuid
 from django.conf import settings
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
@@ -21,6 +22,8 @@ from .serializers import (CarritoSerializer, DetalleCarritoSerializer,
                         DetallePedidoSerializer, ComprobanteSerializer,
                         PagoSerializer, DevolucionSerializer, 
                         SeguimientoPedidoSerializer)
+from django.db.models import Max
+from decimal import Decimal
 
 # Configurar la clave secreta de Stripe
 stripe.api_key = settings.STRIPE_SECRET_KEY
@@ -99,39 +102,65 @@ def crear_pedido_desde_carrito(request):
         # Generar numero_seguimiento
         ultimo_pedido = Pedido.objects.order_by('id').last()
         if ultimo_pedido:
-            # Extraer el número del último numero_seguimiento
             try:
                 ultimo_numero = int(ultimo_pedido.numero_seguimiento.split('-')[1])
                 nuevo_numero = ultimo_numero + 1
             except (AttributeError, IndexError, ValueError):
-                # Fallback si el numero_seguimiento no tiene el formato esperado o es nulo
                 nuevo_numero = (ultimo_pedido.id or 0) + 1
         else:
-            # Si no hay pedidos, empezar desde 1
             nuevo_numero = 1
         
         numero_seguimiento = f'ORD-{nuevo_numero:05d}'
 
-        pedido = pedido_serializer.save(usuario=request.user, numero_seguimiento=numero_seguimiento)
-        monto_total = 0
+        # --- INICIO DE LA CORRECCIÓN ---
         
+        # 1. Crear la instancia del pedido en memoria, SIN guardarla en la BD aún.
+        # Usamos los datos validados del serializer.
+        pedido = Pedido(**pedido_serializer.validated_data)
+        pedido.usuario = request.user
+        pedido.numero_seguimiento = numero_seguimiento
+        
+        # 2. Calcular el subtotal de los productos
+        subtotal_productos = Decimal('0.00')
+        for item in items_carrito:
+            subtotal_productos += item.producto.precio_original * item.cantidad
+
+        # 3. Calcular el costo de envío
+        if items_carrito.filter(producto__envio_gratis=True).exists():
+            costo_envio = Decimal('0.00')
+        else:
+            costo_envio = items_carrito.aggregate(
+                max_tarifa=Max('producto__categoria_envio__tarifa')
+            )['max_tarifa'] or Decimal('0.00')
+
+        # 4. Calcular el monto total con IVA (13%)
+        subtotal_con_envio = subtotal_productos + costo_envio
+        tasa_iva = Decimal('1.13')
+        monto_total = subtotal_con_envio * tasa_iva
+        
+        # 5. Asignar todos los valores calculados al objeto en memoria
+        pedido.subtotal_productos = subtotal_productos
+        pedido.costo_envio = costo_envio
+        pedido.monto_impuestos = monto_total - subtotal_con_envio
+        pedido.monto_total = monto_total
+        
+        # 6. AHORA SÍ, guardar el objeto completo en la base de datos
+        pedido.save()
+        
+        # --- FIN DE LA CORRECCIÓN ---
+
         # Crear detalles del pedido y actualizar inventario
         for item in items_carrito:
             DetallePedido.objects.create(
                 pedido=pedido,
                 producto=item.producto,
                 cantidad=item.cantidad,
-                precio_unitario_en_el_momento=item.producto.precio
+                precio_unitario_en_el_momento=item.producto.precio_original
             )
-            monto_total += item.producto.precio * item.cantidad
             
-            # Actualizar inventario
             inventario = item.producto.inventario
             inventario.stock_actual -= item.cantidad
             inventario.save()
-        
-        pedido.monto_total = monto_total
-        pedido.save()
         
         # Vaciar carrito
         carrito.detallecarrito_set.all().delete()
@@ -148,7 +177,6 @@ def crear_pedido_desde_carrito(request):
         return Response(serializer.data, status=status.HTTP_201_CREATED)
     
     return Response(pedido_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
 class PedidoListView(generics.ListAPIView):
     serializer_class = PedidoSerializer
     permission_classes = [IsAuthenticated]
@@ -548,12 +576,12 @@ def obtener_historial_seguimiento(request, pedido_id):
     except Pedido.DoesNotExist:
         return Response({'error': 'Pedido no encontrado'}, status=status.HTTP_404_NOT_FOUND)
     
-@api_view(['POST'])
+""" @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def crear_checkout_session_stripe(request, pedido_id):
-    """
-    Crea una Checkout Session de Stripe para el pedido especificado
-    """
+    
+    #Crea una Checkout Session de Stripe para el pedido especificado
+
     try:
         pedido = get_object_or_404(Pedido, id=pedido_id, usuario=request.user)
         
@@ -621,14 +649,94 @@ def crear_checkout_session_stripe(request, pedido_id):
         return Response(
             {'error': str(e)}, 
             status=status.HTTP_400_BAD_REQUEST
+        ) """
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def crear_checkout_session_stripe(request, pedido_id):
+    """
+    Crea una Checkout Session de Stripe para el pedido especificado
+    """
+    try:
+        pedido = get_object_or_404(Pedido, id=pedido_id, usuario=request.user)
+        
+        # Si el pedido ya está pagado, no se puede volver a pagar.
+        if hasattr(pedido, 'pago') and pedido.pago.estado_pago == 'exitoso':
+            return Response(
+                {'error': 'Este pedido ya ha sido pagado.'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Busca un pago existente o crea uno nuevo.
+        pago, created = Pago.objects.get_or_create(
+            pedido=pedido,
+            defaults={
+                'monto': pedido.monto_total,
+                'moneda': 'BOB',  # ✅ CAMPO OBLIGATORIO
+                'estado_pago': 'pendiente',
+                'stripe_payment_intent_id': f'temp_{pedido_id}_{uuid.uuid4().hex[:8]}',  # ✅ CAMPO OBLIGATORIO (temporal)
+                'metodo_pago': None,  # ✅ Mejor NULL hasta que se complete
+                'stripe_checkout_session_id': None,
+                'fecha_pago': None,
+                'respuesta_stripe': None
+            }
         )
 
+        # Si el pago no es nuevo y no está pendiente, lo reseteamos
+        if not created and pago.estado_pago != 'pendiente':
+            pago.estado_pago = 'pendiente'
+            pago.stripe_checkout_session_id = None
+            pago.stripe_payment_intent_id = f'temp_{pedido_id}_{uuid.uuid4().hex[:8]}'  # Nuevo ID temporal
+            pago.fecha_pago = None
+            pago.metodo_pago = None
+            pago.respuesta_stripe = None
+            pago.save()
+
+        # Crear Checkout Session
+        checkout_session = stripe.checkout.Session.create(
+            payment_method_types=['card'],
+            line_items=[
+                {
+                    'price_data': {
+                        'currency': 'bob',  # ✅ Stripe usa 'bob' en minúsculas
+                        'product_data': {
+                            'name': f'Pedido #{pedido.id}',
+                            'description': f'Productos del pedido #{pedido.id}',
+                        },
+                        'unit_amount': int(pedido.monto_total * 100),  # Stripe trabaja en centavos
+                    },
+                    'quantity': 1,
+                },
+            ],
+            mode='payment',
+            success_url=f"{settings.FRONTEND_URL}/pago/exitoso?session_id={{CHECKOUT_SESSION_ID}}",
+            cancel_url=f"{settings.FRONTEND_URL}/pago/cancelado?session_id={{CHECKOUT_SESSION_ID}}",
+            metadata={
+                'pedido_id': pedido.id,
+                'pago_id': pago.id
+            }
+        )
+        print('pago realizado correctamente')
+        # Guardar el ID de la sesión en el registro de pago
+        pago.stripe_checkout_session_id = checkout_session.id
+        pago.save()
+        
+        return Response({
+            'sessionId': checkout_session.id,
+            'checkoutUrl': checkout_session.url
+        })
+        
+    except Exception as e:
+        return Response(
+            {'error': str(e)}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
 @method_decorator(csrf_exempt, name='dispatch')
 class StripeWebhookView(View):
     """
     Vista para procesar webhooks de Stripe
     """
     def post(self, request, *args, **kwargs):
+        print("🔔 Webhook recibido")  # Para debugging
         payload = request.body
         sig_header = request.META.get('HTTP_STRIPE_SIGNATURE')
         event = None
@@ -637,11 +745,12 @@ class StripeWebhookView(View):
             event = stripe.Webhook.construct_event(
                 payload, sig_header, settings.STRIPE_WEBHOOK_SECRET
             )
+            print(f"✅ Evento verificado: {event['type']}")  # Para debugging
         except ValueError as e:
-            # Payload inválido
+            print(f"❌ Error en payload: {e}")  # Para debugging
             return JsonResponse({'error': str(e)}, status=400)
         except stripe.error.SignatureVerificationError as e:
-            # Firma inválida
+            print(f"❌ Error en firma: {e}")  # Para debugging
             return JsonResponse({'error': str(e)}, status=400)
 
         # Manejar el evento
@@ -651,6 +760,8 @@ class StripeWebhookView(View):
             # Obtener el ID del pago desde los metadatos
             pago_id = session['metadata']['pago_id']
             payment_intent_id = session['payment_intent']
+            
+            print(f"💰 Pago completado para pago_id: {pago_id}")  # ¡AHORA SÍ!
             
             try:
                 # Actualizar el registro de pago
@@ -669,10 +780,15 @@ class StripeWebhookView(View):
                     tipo_comprobante='factura' if pedido.monto_total > 700 else 'boleta'
                 )
                 
+                print(f"✅ Pago {pago_id} confirmado exitosamente")
                 return JsonResponse({'status': 'success'}, status=200)
                 
             except Pago.DoesNotExist:
+                print(f"❌ Pago no encontrado: {pago_id}")
                 return JsonResponse({'error': 'Pago no encontrado'}, status=404)
+            except Exception as e:
+                print(f"❌ Error procesando pago {pago_id}: {e}")
+                return JsonResponse({'error': str(e)}, status=500)
         
         elif event['type'] == 'checkout.session.expired':
             session = event['data']['object']
@@ -680,16 +796,21 @@ class StripeWebhookView(View):
             # Obtener el ID del pago desde los metadatos
             pago_id = session['metadata']['pago_id']
             
+            print(f"⏰ Sesión expirada para pago_id: {pago_id}")
+            
             try:
                 # Actualizar el registro de pago como fallido
                 pago = Pago.objects.get(id=pago_id)
                 pago.fallar('La sesión de pago expiró')
                 
+                print(f"✅ Pago {pago_id} marcado como expirado")
                 return JsonResponse({'status': 'success'}, status=200)
                 
             except Pago.DoesNotExist:
+                print(f"❌ Pago no encontrado: {pago_id}")
                 return JsonResponse({'error': 'Pago no encontrado'}, status=404)
         
-        # ... manejar otros tipos de eventos si es necesario
+        else:
+            print(f"ℹ️ Evento no manejado: {event['type']}")
         
         return JsonResponse({'status': 'success'}, status=200)
